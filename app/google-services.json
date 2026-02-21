@@ -1,0 +1,63 @@
+{
+  "project_info": {
+    "project_number": "382906453662",
+    "project_id": "meow-cat-141f3",
+    "storage_bucket": "meow-cat-141f3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:382906453662:android:ee5eec6b8cc3bbee4a358f",
+        "android_client_info": {
+          "package_name": "com.meowcat.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "382906453662-0pgnh5hjvror1d27metel2cs6pv238h8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.meowcat.app",
+            "certificate_hash": "6293b10d3353c1a0b7e5bb538bd67e324c5f9525"
+          }
+        },
+        {
+          "client_id": "382906453662-a0d2r6n85nnpo0sduej9auqh0mlcq8km.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.meowcat.app",
+            "certificate_hash": "618b806a05756324b2eeea5b98081a7049ed94ec"
+          }
+        },
+        {
+          "client_id": "382906453662-akqtukbg34ih07k6g3ts2efm39pukk5d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.meowcat.app",
+            "certificate_hash": "c392507d3f684f8b2637e1e7fc4889b3f0be78a4"
+          }
+        },
+        {
+          "client_id": "382906453662-vgirt4d82gmpmlenodj7hgjlgjfjbkim.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRjDS5TL0SMEGIjtgKUVlX_AOlBN2CAKg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "382906453662-vgirt4d82gmpmlenodj7hgjlgjfjbkim.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
