@@ -90,44 +90,67 @@ fun PhotoManagerScreen(navController: NavController) {
     val pickImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri: Uri? ->
-            val currentUser = auth.currentUser // Re-check user
+            val currentUser = auth.currentUser
             if (uri != null && currentUser != null) {
                 isLoading = true
-                MediaManager.get().upload(uri).callback(object : UploadCallback {
-                    override fun onSuccess(requestId: String, resultData: Map<*, *>) {
-                        val newUrl = resultData["secure_url"] as? String
-                        if (newUrl != null && scope.isActive) {
-                            scope.launch {
+                
+                // Генерируем уникальное имя для файла
+                val fileName = "photo_${System.currentTimeMillis()}.jpg"
+                val storageRef = Firebase.storage.reference.child("user_photos/${currentUser.uid}/$fileName")
+
+                // Загружаем файл напрямую в Firebase Storage
+                storageRef.putFile(uri)
+                    .addOnSuccessListener {
+                        // Файл загружен, теперь получаем ссылку на него
+                        storageRef.downloadUrl.addOnSuccessListener { downloadUri ->
+                            val newUrl = downloadUri.toString()
+                            
+                            // Безопасно обновляем UI в главном потоке
+                            scope.launch(Dispatchers.Main) {
                                 val isFirstPhoto = mainPhotoUrl.isNullOrEmpty()
+                                
+                                // Добавляем URL в локальный список для мгновенного отображения
                                 photoUrls = photoUrls + newUrl
                                 
+                                // Сохраняем ссылку в Firestore
                                 db.collection("users").document(currentUser.uid)
                                     .update("photo_gallery", FieldValue.arrayUnion(newUrl))
-                                
-                                if (isFirstPhoto) {
-                                    setAsMainPhoto(newUrl)
-                                }
-                                
+                                    .addOnSuccessListener {
+                                        if (isFirstPhoto) {
+                                            setAsMainPhoto(newUrl)
+                                        }
+                                        isLoading = false
+                                    }
+                                    .addOnFailureListener { e ->
+                                        Toast.makeText(context, "Ошибка базы данных: ${e.message}", Toast.LENGTH_LONG).show()
+                                        // Если ошибка БД, убираем фото из списка, чтобы не было "битых" картинок
+                                        photoUrls = photoUrls.filter { it != newUrl }
+                                        isLoading = false
+                                    }
+                            }
+                        }.addOnFailureListener { e ->
+                            scope.launch(Dispatchers.Main) {
+                                Toast.makeText(context, "Не удалось получить ссылку: ${e.message}", Toast.LENGTH_LONG).show()
                                 isLoading = false
                             }
                         }
                     }
-                    override fun onError(requestId: String, error: ErrorInfo) { 
-                        if (scope.isActive) {
-                            scope.launch { 
-                                Toast.makeText(context, "Ошибка загрузки: ${error.description}", Toast.LENGTH_LONG).show()
-                                isLoading = false 
-                            }
+                    .addOnFailureListener { e ->
+                        scope.launch(Dispatchers.Main) {
+                            Toast.makeText(context, "Ошибка загрузки файла: ${e.message}", Toast.LENGTH_LONG).show()
+                            isLoading = false
                         }
                     }
-                    override fun onStart(requestId: String) {}
-                    override fun onProgress(requestId: String, bytes: Long, totalBytes: Long) {}
-                    override fun onReschedule(requestId: String, error: ErrorInfo) {}
-                }).dispatch()
+            } else if (uri == null) {
+                // Пользователь просто закрыл галерею, ничего не выбрав
+                Toast.makeText(context, "Выбор отменен", Toast.LENGTH_SHORT).show()
+            } else {
+                scope.launch(Dispatchers.Main) {
+                    Toast.makeText(context, "Ошибка: пользователь не авторизован", Toast.LENGTH_LONG).show()
+                }
             }
         }
     )
-
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
