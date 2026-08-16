@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,10 +47,9 @@ import com.google.firebase.ktx.Firebase
 import java.text.SimpleDateFormat
 import java.util.*
 
-// Модель данных сделана более гибкой
 data class Message(
     val senderId: String = "",
-    val text: String? = null, 
+    val text: String? = null,
     val imageUrl: String? = null,
     val createdAt: Timestamp? = null,
     var messageId: String? = null
@@ -62,18 +62,20 @@ fun ChatScreen(navController: NavController, chatId: String) {
     val auth = Firebase.auth
     val db = Firebase.firestore
     val currentUserId = auth.currentUser?.uid.orEmpty()
-    val otherUserId = chatId.replace(currentUserId, "").replace("-", "")
+    
+    val otherUserId = remember(chatId, currentUserId) {
+        chatId.split("-").firstOrNull { it != currentUserId } ?: ""
+    }
 
-    // Инициализация Cloudinary
-    LaunchedEffect(Unit) {
-        try {
-            val config = mapOf(
-                "cloud_name" to "dcyodbsms",
-                "api_key" to "867571539639346",
-                "api_secret" to "9zcWAM_he_lbiAs4U-wlQYgiTt8"
-            )
-            MediaManager.init(context, config)
-        } catch (e: Exception) { /* уже инициализировано */ }
+    // --- ДОБАВЛЕНО: Сброс счетчика непрочитанных при входе в чат ---
+    LaunchedEffect(chatId, currentUserId) {
+        if (currentUserId.isNotEmpty()) {
+            db.collection("chats_users").document(chatId)
+                .update("unreadCount_$currentUserId", 0)
+                .addOnFailureListener { e ->
+                    Log.e("ChatScreen", "Failed to reset unread count", e)
+                }
+        }
     }
 
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
@@ -85,9 +87,11 @@ fun ChatScreen(navController: NavController, chatId: String) {
 
     fun sendMessage(text: String? = null, imageUrl: String? = null) {
         if (text.isNullOrBlank() && imageUrl.isNullOrBlank()) return
+        if (currentUserId.isBlank() || otherUserId.isBlank()) return
 
         val batch = db.batch()
         val newMessageRef = db.collection("chats_users/$chatId/messages").document()
+        
         val messageData = hashMapOf<String, Any?>(
             "senderId" to currentUserId,
             "createdAt" to FieldValue.serverTimestamp(),
@@ -108,6 +112,8 @@ fun ChatScreen(navController: NavController, chatId: String) {
 
         batch.commit().addOnSuccessListener {
             if (text != null) inputText = ""
+        }.addOnFailureListener { e ->
+            Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -122,7 +128,7 @@ fun ChatScreen(navController: NavController, chatId: String) {
                     isUploading = false
                 }
                 override fun onError(requestId: String, error: ErrorInfo?) {
-                    Toast.makeText(context, "Ошибка загрузки", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Ошибка загрузки: ${error?.description}", Toast.LENGTH_SHORT).show()
                     isUploading = false
                 }
                 override fun onStart(requestId: String) {}
@@ -158,11 +164,11 @@ fun ChatScreen(navController: NavController, chatId: String) {
         }
     }
 
-    // Загрузка сообщений
     DisposableEffect(chatId) {
         val listener = db.collection("chats_users/$chatId/messages")
             .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
                 messages = snapshot?.documents?.mapNotNull { doc ->
                     doc.toObject<Message>()?.copy(messageId = doc.id)
                 } ?: emptyList()
@@ -211,7 +217,6 @@ fun ChatScreen(navController: NavController, chatId: String) {
                     onValueChange = { inputText = it },
                     placeholder = { Text("Сообщение...") },
                     modifier = Modifier.weight(1f),
-                    // ИСПРАВЛЕНО: Добавлен черный цвет для вводимого текста
                     textStyle = TextStyle(color = Color.Black, fontSize = 16.sp),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
@@ -228,7 +233,7 @@ fun ChatScreen(navController: NavController, chatId: String) {
 
                 IconButton(
                     onClick = { sendMessage(text = inputText.trim()) },
-                    enabled = inputText.isNotBlank()
+                    enabled = inputText.isNotBlank() && !isUploading
                 ) {
                     Icon(Icons.Default.Send, "Отправить", tint = if (inputText.isNotBlank()) Color(0xFFE65100) else Color.Gray)
                 }

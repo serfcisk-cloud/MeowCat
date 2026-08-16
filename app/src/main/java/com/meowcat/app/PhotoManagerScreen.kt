@@ -3,7 +3,7 @@ package com.meowcat.app
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.util.Log
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,8 +17,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,11 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import coil.compose.AsyncImage
 import com.cloudinary.android.MediaManager
 import com.cloudinary.android.callback.ErrorInfo
@@ -39,6 +37,7 @@ import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -67,6 +66,7 @@ fun PhotoManagerScreen(navController: NavController) {
             db.collection("users").document(user.uid).get()
                 .addOnSuccessListener { document ->
                     if (document != null && document.exists()) {
+                        @Suppress("UNCHECKED_CAST")
                         val gallery = document.get("photo_gallery") as? List<String> ?: emptyList()
                         val mainImage = document.getString("profileImageUrl")
                         mainPhotoUrl = mainImage
@@ -95,15 +95,12 @@ fun PhotoManagerScreen(navController: NavController) {
                 isLoading = true
                 
                 try {
-                    // ВАЖНО: Здесь должен быть ваш Unsigned Upload Preset из панели Cloudinary
-                    // Например: "meowcat_upload" (создайте его в настройках Cloudinary без подписи)
                     MediaManager.get().upload(uri)
-                        .option("upload_preset", "ВАШ_UNSIGNED_PRESET") 
+                        .option("upload_preset", "meowcat_unsigned")
                         .callback(object : UploadCallback {
                             override fun onSuccess(requestId: String, resultData: Map<*, *>) {
                                 val newUrl = resultData["secure_url"] as? String
                                 if (newUrl != null && scope.isActive) {
-                                    // КРИТИЧЕСКИ ВАЖНО: Обновляем UI только в главном потоке!
                                     scope.launch(Dispatchers.Main) {
                                         val isFirstPhoto = mainPhotoUrl.isNullOrEmpty()
                                         photoUrls = photoUrls + newUrl
@@ -140,9 +137,8 @@ fun PhotoManagerScreen(navController: NavController) {
                         }).dispatch()
                         
                 } catch (e: Exception) {
-                    // Если Cloudinary не инициализирован, приложение НЕ вылетит, а покажет ошибку
                     scope.launch(Dispatchers.Main) {
-                        Toast.makeText(context, "Ошибка инициализации загрузки. Проверьте настройки приложения.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Ошибка инициализации загрузки: ${e.message}", Toast.LENGTH_LONG).show()
                         isLoading = false
                     }
                 }
@@ -151,6 +147,14 @@ fun PhotoManagerScreen(navController: NavController) {
             }
         }
     )
+
+    // Выбираем разрешение в зависимости от версии Android
+    val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_IMAGES
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -162,10 +166,10 @@ fun PhotoManagerScreen(navController: NavController) {
     }
     
     val addPhotoClick: () -> Unit = {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(context, storagePermission) == PackageManager.PERMISSION_GRANTED) {
             pickImageLauncher.launch("image/*")
         } else {
-            permissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
+            permissionLauncher.launch(storagePermission)
         }
     }
 
@@ -175,10 +179,9 @@ fun PhotoManagerScreen(navController: NavController) {
                 title = { Text("Мои фотографии") }, 
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 }
-                // --- КНОПКА ВЫХОДА УДАЛЕНА ---
             )
         },
         floatingActionButton = {
@@ -191,12 +194,12 @@ fun PhotoManagerScreen(navController: NavController) {
     ) { padding ->
         when {
             isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
             photoUrls.isEmpty() -> {
-                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Column(modifier = Modifier.fillMaxSize().padding(padding), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Text("У вас пока нет фотографий", style = MaterialTheme.typography.titleLarge)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = addPhotoClick) {
